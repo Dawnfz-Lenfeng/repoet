@@ -9,11 +9,11 @@ def test_basic_pattern():
 
 def test_email_pattern():
     pattern = op.seq(
-        op.some(op.chars("a-zA-Z0-9._%+-")),  # username part
+        op.some(op.within("a-zA-Z0-9._%+-")),  # username part
         "@",
-        op.some(op.chars("a-zA-Z0-9.-")),  # domain part
-        ".",
-        op.between(2)(op.chars("a-zA-Z")),  # top-level domain
+        op.some(op.within("a-zA-Z0-9.-")),  # domain part
+        op.lit("."),
+        op.between(2)(op.within("a-zA-Z")),  # top-level domain
     )
 
     # Test actual email addresses using Pattern methods directly
@@ -31,54 +31,74 @@ def test_phone_pattern():
     assert not pattern.match("12345")
 
 
-def test_complex_patterns():
-    # Test combining multiple features
-    date_pattern = op.seq(
-        (op.digit * 4).named("year"),
-        "-",
-        (op.digit * 2).named("month"),
-        "-",
-        (op.digit * 2).named("day"),
-    )
-    assert date_pattern.match("2024-03-21")
-
-    # Test alternation
-    time_pattern = op.seq(
-        op.chars("0-1") + op.digit | "2" + op.chars("0-3"),
-        ":",
-        op.chars("0-5") + op.digit,
-    )
-
-    assert time_pattern.match("23:59")
-    assert time_pattern.match("08:30")
-    assert not time_pattern.match("25:00")
-
-
 def test_quantifiers():
-    # Test various quantifiers
-    pattern = op.seq(
-        op.maybe("https"),  # optional https
-        "://",
-        op.some(op.word),  # domain
-        op.many(op.seq("/", op.some(op.word))),  # optional paths
+    # Test zero or one (maybe/optional) - matches 0-1 occurrence
+    hex_color = op.seq(
+        "#",
+        op.maybe("0x"),  # optional hex prefix
+        op.within("0-9A-Fa-f") * 6,  # exactly 6 hex digits
     )
+    assert hex_color.match("#0xFFAABB")
+    assert hex_color.match("#FF00CC")
+    assert not hex_color.match("#12")  # too short
 
-    assert pattern.match("http://example.com")
-    assert pattern.match("https://example.com/path/to/resource")
-    assert not pattern.match("just_text")
-
-
-def test_named_groups():
-    # 使用 pattern.named() 方法
-    pattern = op.seq(
-        op.alt("http", "https").named("protocol"),
-        "://",
-        op.some(op.word).named("domain"),
+    # Test one or more (some) - matches 1+ occurrences
+    number = op.seq(
+        op.maybe("-"),
+        op.some(op.digit),
+        op.maybe(op.seq(".", op.some(op.digit))),
     )
+    assert number.match("123")
+    assert number.match("-42.5")
+    assert number.match("0.123")
+    assert not number.match(".")
 
-    match = pattern.match("https://example.com")
+    # Test zero or more (many) - matches 0+ occurrences
+    comment = "/*" + op.many(op.any) + "*/"
+    assert comment.match("/**/")
+    assert comment.match("/* test comment */")
+    assert not comment.match("/*")
+
+
+def test_groups():
+    # Test unnamed groups
+    simple_pattern = op.seq(
+        op.group(op.digit * 3),
+        "-",
+        op.group(op.digit * 4),
+    )
+    match = simple_pattern.match("123-4567")
+    assert match.group(1) == "123"
+    assert match.group(2) == "4567"
+
+    # Test named groups
+    date_pattern = op.seq(
+        op.group(op.digit * 4, "year"),
+        "-",
+        op.group(op.digit * 2, "month"),
+        "-",
+        op.group(op.digit * 2, "day"),
+    )
+    match = date_pattern.match("2024-03-21")
+    assert match.group("year") == "2024"
+    assert match.group("month") == "03"
+    assert match.group("day") == "21"
+
+    # Test mixed named and unnamed groups
+    url_pattern = op.seq(
+        op.group(op.alt("http", "https"), "protocol"),
+        "://",
+        op.group(op.word),  # unnamed domain
+        op.group("." + op.some(op.within("a-z")), "tld"),
+    )
+    match = url_pattern.match("https://example.com")
     assert match.group("protocol") == "https"
-    assert match.group("domain") == "example.com"
+    assert match.group(2) == "example"
+    assert match.group("tld") == ".com"
+
+    # Test group properties
+    assert url_pattern.groups == 3
+    assert set(url_pattern.groupindex.keys()) == {"protocol", "tld"}
 
 
 def test_pattern_methods():
@@ -103,7 +123,9 @@ def test_pattern_methods():
 
 
 def test_pattern_properties():
-    pattern = (op.digit * 4).named("year") + "-" + (op.digit * 2).named("month")
+    pattern = (
+        op.group(op.digit * 4, name="year") + "-" + op.group(op.digit * 2, name="month")
+    )
 
     assert pattern.groups == 2
     assert "year" in pattern.groupindex

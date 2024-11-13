@@ -13,13 +13,27 @@ class Pattern:
         return self._pattern
 
     @property
+    def pattern(self) -> str:
+        """Return the pattern string"""
+        return self._pattern
+
+    @property
     def compiled(self):
         """Lazy compilation of the pattern"""
         if self._compiled is None:
             self._compiled = re.compile(self._pattern)
         return self._compiled
 
-    # Delegate all re.Pattern methods
+    @property
+    def groups(self) -> int:
+        """Return number of capturing groups"""
+        return self.compiled.groups
+
+    @property
+    def groupindex(self) -> dict[str, int]:
+        """Return dictionary of named capturing groups"""
+        return self.compiled.groupindex
+
     def match(self, string: str, pos: int = 0, endpos: int = None) -> Optional[Match]:
         """Match pattern at start of string"""
         if endpos is None:
@@ -54,37 +68,23 @@ class Pattern:
         """Replace matches and return tuple (new_string, number_of_subs_made)"""
         return self.compiled.subn(repl, string, count)
 
-    @property
-    def pattern(self) -> str:
-        """Return the pattern string"""
-        return self._pattern
-
-    @property
-    def groups(self) -> int:
-        """Return number of capturing groups"""
-        return self.compiled.groups
-
-    @property
-    def groupindex(self) -> dict[str, int]:
-        """Return dictionary of named capturing groups"""
-        return self.compiled.groupindex
+    def __radd__(self, other: str) -> "Pattern":
+        """Handle string + Pattern"""
+        return Pattern(re.escape(other) + self._pattern)
 
     def __add__(self, other: Union["Pattern", str]) -> "Pattern":
         """Implement + operator for sequence concatenation"""
-        return Pattern(f"{self._pattern}{str(other)}")
+        if isinstance(other, Pattern):
+            return Pattern(f"{self._pattern}{other._pattern}")
+        return Pattern(f"{self._pattern}{re.escape(other)}")
 
     def __or__(self, other: Union["Pattern", str]) -> "Pattern":
         """Implement | operator for alternatives"""
-        return Pattern(f"(?:{self._pattern}|{str(other)})")
-
-    def named(self, name: str) -> "Pattern":
-        """Create a named group
-        Example: pattern.named("username")
-        """
-        return Pattern(f"(?P<{name}>{self._pattern})")
+        other_pattern = other._pattern if isinstance(other, Pattern) else re.escape(other)
+        return Pattern(f"(?:{self._pattern}|{other_pattern})")
 
     def __mul__(self, n: int) -> "Pattern":
         """Implement * operator for repetition
         Example: pattern * 3 equals times(3)(pattern)
         """
-        return Pattern(f"(?:{self._pattern}){{{n}}}")
+        return Pattern(f"(?:{self._pattern}{{{n}}})")
