@@ -1,5 +1,5 @@
-from refree import op
-from refree.pattern import Pattern
+from repoet import op
+from repoet.pattern import Pattern
 
 
 def test_basic_pattern():
