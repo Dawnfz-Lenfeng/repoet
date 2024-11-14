@@ -4,25 +4,62 @@ from typing import Optional, Union
 from .pattern import Pattern
 
 
+def re_escape(fn):
+    def arg_escaped(*args):
+        t = [re.escape(arg) if isinstance(arg, str) else arg for arg in args]
+        return fn(*t)
+
+    return arg_escaped
+
+
 # Basic constructors
+@re_escape
 def lit(text: str) -> Pattern:
-    """Literal text pattern"""
+    """Literal text pattern - always escapes special characters"""
     return Pattern(re.escape(text))
 
 
+def regex(pattern: str) -> Pattern:
+    """Raw regex pattern - no escaping applied"""
+    return Pattern(pattern)
+
+
+# Common patterns
+digit = regex(r"\d")
+nondigit = regex(r"\D")
+letter = regex(r"\w")
+nonletter = regex(r"\W")
+word = regex(r"\w+")
+space = regex(r"\s")
+nonspace = regex(r"\S")
+any = regex(".")
+tab = regex("\t")
+newline = regex("\n")
+
+# Assertions
+begin = regex("^")
+end = regex("$")
+
+# Boundary matchers
+bound = regex(r"\b")
+nonbound = regex(r"\B")
+
+
+@re_escape
 def seq(*patterns: Union[Pattern, str]) -> Pattern:
     """Sequence of patterns"""
-    return Pattern("".join(str(p) for p in patterns))
+    return Pattern("".join(map(str, patterns)))
 
 
+@re_escape
 def alt(*patterns: Union[Pattern, str]) -> Pattern:
     """Alternative patterns (OR)"""
-    return Pattern(f"(?:{'|'.join(str(p) for p in patterns)})")
+    return Pattern(f"(?:{'|'.join(map(str, patterns))})")
 
 
 def group(p: Pattern, name: Optional[str] = None) -> Pattern:
     """Capture group, optionally named
-    
+
     Examples:
         group(word)              -> (\\w+)
         group(word, "username")  -> (?P<username>\\w+)
@@ -33,34 +70,14 @@ def group(p: Pattern, name: Optional[str] = None) -> Pattern:
 
 
 # Character classes
-def within(*cs: str) -> Pattern:
-    """Character class [...] - match any single character within the specified set
-    
-    Examples:
-        within("0-9")     -> [0-9]
-        within("aeiou")   -> [aeiou]
-        within("a-zA-Z")  -> [a-zA-Z]
-    """
-    return Pattern(f"[{''.join(cs)}]")
+def anyof(*cs: str) -> Pattern:
+    """Character class [...] - match any single character within the specified set"""
+    return Pattern(f"[{''.join(map(str, cs))}]")
 
 
 def exclude(*cs: str) -> Pattern:
-    """Negated character class [^...] - match any single character excluding those in the specified set
-    
-    Examples:
-        exclude("0-9")    -> [^0-9]
-        exclude("aeiou")  -> [^aeiou]
-        exclude("a-zA-Z") -> [^a-zA-Z]
-    """
-    return Pattern(f"[^{''.join(cs)}]")
-
-
-# Common patterns
-digit = Pattern(r"\d")
-letter = Pattern(pattern=r"\w")
-word = Pattern(r"\w+")
-space = Pattern(r"\s")
-any = Pattern(".")
+    """Negated character class [^...] - match any single character excluding those in the specified set"""
+    return Pattern(f"[^{''.join(map(str, cs))}]")
 
 
 # Quantifiers
@@ -69,27 +86,101 @@ def times(n: int) -> Pattern:
     return lambda p: Pattern(f"(?:{p}){{{n}}}")
 
 
-def between(min_n: int, max_n: Optional[int] = None) -> Pattern:
-    """Repeat between min_n and max_n times"""
+@re_escape
+def some(p: Pattern, greedy: bool = True) -> Pattern:
+    """One or more times (+)
+
+    Args:
+        p: Pattern to repeat
+        greedy: If True (default), use greedy matching; if False, use non-greedy matching
+
+    Examples:
+        some(word)           -> (?:\\w+)
+        some(word, False)    -> (?:\\w+?)
+    """
+    return Pattern(f"(?:{p})+{'?' if not greedy else ''}")
+
+
+@re_escape
+def maybe(p: Pattern, greedy: bool = True) -> Pattern:
+    """Zero or one time (?)
+
+    Args:
+        p: Pattern to make optional
+        greedy: If True (default), use greedy matching; if False, use non-greedy matching
+    """
+    return Pattern(f"(?:{p})?{'?' if not greedy else ''}")
+
+
+@re_escape
+def mightsome(p: Pattern, greedy: bool = True) -> Pattern:
+    """Zero or more times (*)
+
+    Args:
+        p: Pattern to repeat
+        greedy: If True (default), use greedy matching; if False, use non-greedy matching
+    """
+    return Pattern(f"(?:{p})*{'?' if not greedy else ''}")
+
+
+def between(min_n: int, max_n: Optional[int] = None, greedy: bool = True) -> Pattern:
+    """Repeat between min_n and max_n times
+
+    Args:
+        min_n: Minimum number of repetitions
+        max_n: Maximum number of repetitions (if None, unlimited)
+        greedy: If True (default), use greedy matching; if False, use non-greedy matching
+    """
     max_str = str(max_n) if max_n is not None else ""
-    return lambda p: Pattern(f"(?:{p}){{{min_n},{max_str}}}")
+    return lambda p: Pattern(f"(?:{p}){{{min_n},{max_str}}}{'?' if not greedy else ''}")
 
 
-def many(p: Pattern) -> Pattern:
-    """Zero or more times (*)"""
-    return Pattern(f"(?:{p})*")
+@re_escape
+def ahead(*patterns: Union[Pattern, str]) -> Pattern:
+    """Positive lookahead assertion (?=...)
+
+    Examples:
+        ahead("foo")  -> (?=foo)
+        ahead(word)   -> (?=\\w+)
+    """
+    return Pattern(f"(?={''.join(map(str, patterns))})")
 
 
-def some(p: Pattern) -> Pattern:
-    """One or more times (+)"""
-    return Pattern(f"(?:{p})+")
+@re_escape
+def not_ahead(*patterns: Union[Pattern, str]) -> Pattern:
+    """Negative lookahead assertion (?!...)
+
+    Examples:
+        not_ahead("foo")  -> (?!foo)
+    """
+    return Pattern(f"(?!{''.join(map(str, patterns))})")
 
 
-def maybe(p: Pattern) -> Pattern:
-    """Zero or one time (?)"""
-    return Pattern(f"(?:{p})?")
+@re_escape
+def behind(*patterns: Union[Pattern, str]) -> Pattern:
+    """Positive lookbehind assertion (?<=...)
+
+    Examples:
+        behind("foo")  -> (?<=foo)
+    """
+    return Pattern(f"(?<={''.join(map(str, patterns))})")
 
 
-# Assertions
-begin = Pattern("^")  # Start of string
-end = Pattern("$")  # End of string
+@re_escape
+def not_behind(*patterns: Union[Pattern, str]) -> Pattern:
+    """Negative lookbehind assertion (?<!...)
+
+    Examples:
+        not_behind("foo")  -> (?<!foo)
+    """
+    return Pattern(f"(?<!{''.join(map(str, patterns))})")
+
+
+@re_escape
+def atomic_group(*patterns: Union[Pattern, str]) -> Pattern:
+    """Create an atomic group (?>...)
+
+    Examples:
+        atomic_group("foo", word)  -> (?>foo\\w+)
+    """
+    return Pattern(f"(?>{''.join(map(str, patterns))})")

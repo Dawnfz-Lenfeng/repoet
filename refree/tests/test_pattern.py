@@ -7,42 +7,18 @@ def test_basic_pattern():
     assert str(pattern) == "^test(?:\\d{3})end$"
 
 
-def test_email_pattern():
-    pattern = op.seq(
-        op.some(op.within("a-zA-Z0-9._%+-")),  # username part
-        "@",
-        op.some(op.within("a-zA-Z0-9.-")),  # domain part
-        op.lit("."),
-        op.between(2)(op.within("a-zA-Z")),  # top-level domain
-    )
-
-    # Test actual email addresses using Pattern methods directly
-    assert pattern.match("test@example.com")
-    assert pattern.match("user.name+tag@domain.com")
-    assert not pattern.match("invalid@email")
-
-
-def test_phone_pattern():
-    pattern = op.begin + "1" + (op.digit * 10)
-    assert str(pattern) == "^1(?:\\d{10})"
-
-    # Test actual phone numbers using Pattern methods
-    assert pattern.match("13812345678")
-    assert not pattern.match("12345")
-
-
 def test_quantifiers():
-    # Test zero or one (maybe/optional) - matches 0-1 occurrence
+    # Test zero or one (maybe/optional)
     hex_color = op.seq(
         "#",
-        op.maybe("0x"),  # optional hex prefix
-        op.within("0-9A-Fa-f") * 6,  # exactly 6 hex digits
+        op.maybe("0x"),
+        op.anyof("0-9A-Fa-f") * 6,
     )
     assert hex_color.match("#0xFFAABB")
     assert hex_color.match("#FF00CC")
-    assert not hex_color.match("#12")  # too short
+    assert not hex_color.match("#12")
 
-    # Test one or more (some) - matches 1+ occurrences
+    # Test one or more (some)
     number = op.seq(
         op.maybe("-"),
         op.some(op.digit),
@@ -53,8 +29,8 @@ def test_quantifiers():
     assert number.match("0.123")
     assert not number.match(".")
 
-    # Test zero or more (many) - matches 0+ occurrences
-    comment = "/*" + op.many(op.any) + "*/"
+    # Test zero or more (mightsome)
+    comment = "/*" + op.mightsome(op.any) + "*/"
     assert comment.match("/**/")
     assert comment.match("/* test comment */")
     assert not comment.match("/*")
@@ -88,8 +64,8 @@ def test_groups():
     url_pattern = op.seq(
         op.group(op.alt("http", "https"), "protocol"),
         "://",
-        op.group(op.word),  # unnamed domain
-        op.group("." + op.some(op.within("a-z")), "tld"),
+        op.group(op.word),
+        op.group("." + op.some(op.anyof("a-z")), "tld"),
     )
     match = url_pattern.match("https://example.com")
     assert match.group("protocol") == "https"
@@ -102,21 +78,15 @@ def test_groups():
 
 
 def test_pattern_methods():
-    # Test additional Pattern methods
     pattern = op.seq(op.word, op.space, op.digit)
-
-    # Test search
     assert pattern.search("prefix abc 5 suffix").group() == "abc 5"
 
-    # Test findall
     results = pattern.findall("word 1 text 2")
     assert len(results) == 2
 
-    # Test split
     comma_pattern = Pattern(",")
     assert comma_pattern.split("a,b,c") == ["a", "b", "c"]
 
-    # Test substitution
     number_pattern = op.seq(op.digit * 3, "-", op.digit * 4)
     result = number_pattern.sub("XXX-XXXX", "Call 123-4567 or 890-1234")
     assert result == "Call XXX-XXXX or XXX-XXXX"
@@ -126,7 +96,128 @@ def test_pattern_properties():
     pattern = (
         op.group(op.digit * 4, name="year") + "-" + op.group(op.digit * 2, name="month")
     )
-
     assert pattern.groups == 2
     assert "year" in pattern.groupindex
     assert "month" in pattern.groupindex
+
+
+def test_character_classes():
+    """Test built-in character classes"""
+    # Test basic character classes
+    assert op.digit.match("5")
+    assert not op.digit.match("a")
+    assert op.letter.match("a")
+    assert op.letter.match("5")
+    assert op.letter.match("_")
+    assert not op.letter.match("!")
+    assert op.nonletter.match("!")
+    assert not op.nonletter.match("a")
+
+    # Test whitespace classes
+    assert op.space.match(" ")
+    assert op.space.match("\t")
+    assert op.space.match("\n")
+    assert not op.space.match("x")
+    assert op.nonspace.match("x")
+    assert not op.nonspace.match(" ")
+
+
+def test_boundary_matchers():
+    """Test word boundaries and line anchors"""
+    # Word boundaries
+    word_pattern = op.bound + op.word + op.bound
+    print(word_pattern)
+    assert word_pattern.search("Hello world!")
+    assert not word_pattern.search("Hello_world")
+
+    # Line anchors
+    line_pattern = op.begin + "start" + op.end
+    assert line_pattern.match("start")
+    assert not line_pattern.match("start\n")
+    assert not line_pattern.match(" start")
+
+
+def test_lookaround():
+    """Test lookahead and lookbehind assertions"""
+    # Positive lookahead
+    dollars = op.digit + op.ahead("$")
+    assert dollars.match("5$")
+    assert not dollars.match("5€")
+
+    # Negative lookahead
+    no_vowel = op.word + op.not_ahead(op.anyof("aeiou"))
+    assert no_vowel.match("dry")
+    assert not no_vowel.match("dye")
+
+    # Positive lookbehind
+    after_hash = op.behind("#") + op.word
+    assert after_hash.search("#tag")
+    assert not after_hash.search("@tag")
+
+    # Negative lookbehind
+    no_digit_before = op.not_behind(op.digit) + op.word
+    assert no_digit_before.search("abc")
+    assert not no_digit_before.search("1abc")
+
+
+def test_greedy_vs_nongreedy():
+    """Test greedy and non-greedy quantifiers"""
+    text = "<tag>content</tag>"
+
+    # Greedy matching
+    greedy = op.seq("<", op.some(op.any), ">")
+    assert greedy.search(text).group() == "<tag>content</tag>"
+
+    # Non-greedy matching
+    non_greedy = op.seq("<", op.some(op.any, greedy=False), ">")
+    assert non_greedy.search(text).group() == "<tag>"
+
+
+def test_between_quantifier():
+    """Test the between quantifier with different ranges"""
+    # Exact count
+    three_digits = op.between(3, 3)(op.digit)
+    assert three_digits.match("123")
+    assert not three_digits.match("12")
+    assert not three_digits.match("1234")
+
+    # Range with upper bound
+    phone = op.between(2, 4)(op.digit)
+    assert phone.match("12")
+    assert phone.match("123")
+    assert phone.match("1234")
+    assert not phone.match("12345")
+
+    # Range without upper bound
+    many_digits = op.between(2, None)(op.digit)
+    assert many_digits.match("12")
+    assert many_digits.match("123456789")
+
+
+def test_pattern_composition():
+    """Test complex pattern composition"""
+    # Email pattern
+    email = op.seq(
+        op.some(op.alt(op.letter, op.anyof(".-_"))),  # username
+        "@",
+        op.some(op.alt(op.letter, op.lit("-"))),  # domain
+        op.lit("."),
+        op.between(2, 4)(op.letter),  # TLD
+    )
+
+    assert email.match("user@example.com")
+    assert email.match("user.name@sub-domain.co.uk")
+    assert not email.match("invalid@email")
+    assert not email.match("@domain.com")
+
+
+def test_special_characters():
+    """Test handling of special regex characters"""
+    # Test literal dots
+    dot_pattern = op.lit(".") + op.digit
+    assert dot_pattern.match(".5")
+    assert not dot_pattern.match("x5")
+
+    # Test escaping in character classes
+    special_chars = op.anyof(".*+?[](){}^$|\\")
+    assert all(special_chars.match(c) for c in ".*+?[](){}^$|\\")
