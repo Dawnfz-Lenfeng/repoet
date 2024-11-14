@@ -4,19 +4,49 @@ from typing import Optional, Union
 from .pattern import Pattern
 
 
-def re_escape(fn):
-    def arg_escaped(*args):
-        t = [re.escape(arg) if isinstance(arg, str) else arg for arg in args]
-        return fn(*t)
+def re_escape(skip_chars=None):
+    if callable(skip_chars):
+        func = skip_chars
+        skip_chars = ""
+        return re_escape()(func)
 
-    return arg_escaped
+    if skip_chars is None:
+        skip_chars = ""
+
+    def decorator(fn):
+        def arg_escaped(*args, **kwargs):
+            def escape_with_skip(arg):
+                if not isinstance(arg, str):
+                    return arg
+
+                # Check for literal backslash before escaped chars
+                parts = []
+                i = 0
+                while i < len(arg):
+                    if arg[i] == "\\" and i + 1 < len(arg) and arg[i + 1] in skip_chars:
+                        parts.append(arg[i : i + 2])  # Keep \char as is
+                        i += 2
+                    elif arg[i] in skip_chars:
+                        parts.append(arg[i])
+                        i += 1
+                    else:
+                        parts.append(re.escape(arg[i]))
+                        i += 1
+                return "".join(parts)
+
+            escaped_args = [escape_with_skip(arg) for arg in args]
+            return fn(*escaped_args, **kwargs)
+
+        return arg_escaped
+
+    return decorator
 
 
 # Basic constructors
 @re_escape
 def lit(text: str) -> Pattern:
     """Literal text pattern - always escapes special characters"""
-    return Pattern(re.escape(text))
+    return Pattern(text)
 
 
 def regex(pattern: str) -> Pattern:
@@ -70,22 +100,19 @@ def group(p: Pattern, name: Optional[str] = None) -> Pattern:
 
 
 # Character classes
+@re_escape("-")
 def anyof(*cs: str) -> Pattern:
     """Character class [...] - match any single character within the specified set"""
     return Pattern(f"[{''.join(map(str, cs))}]")
 
 
+@re_escape("-")
 def exclude(*cs: str) -> Pattern:
     """Negated character class [^...] - match any single character excluding those in the specified set"""
     return Pattern(f"[^{''.join(map(str, cs))}]")
 
 
 # Quantifiers
-def times(n: int) -> Pattern:
-    """Repeat exactly n times"""
-    return lambda p: Pattern(f"(?:{p}){{{n}}}")
-
-
 @re_escape
 def some(p: Pattern, greedy: bool = True) -> Pattern:
     """One or more times (+)
@@ -123,7 +150,17 @@ def mightsome(p: Pattern, greedy: bool = True) -> Pattern:
     return Pattern(f"(?:{p})*{'?' if not greedy else ''}")
 
 
-def between(min_n: int, max_n: Optional[int] = None, greedy: bool = True) -> Pattern:
+def times(n: int):
+    """Repeat exactly n times"""
+
+    @re_escape
+    def repeat(p: Pattern) -> Pattern:
+        return Pattern(f"(?:{p}){{{n}}}")
+
+    return repeat
+
+
+def between(min_n: int, max_n: Optional[int] = None, greedy: bool = True):
     """Repeat between min_n and max_n times
 
     Args:
@@ -132,7 +169,12 @@ def between(min_n: int, max_n: Optional[int] = None, greedy: bool = True) -> Pat
         greedy: If True (default), use greedy matching; if False, use non-greedy matching
     """
     max_str = str(max_n) if max_n is not None else ""
-    return lambda p: Pattern(f"(?:{p}){{{min_n},{max_str}}}{'?' if not greedy else ''}")
+
+    @re_escape
+    def repeat(p: Pattern) -> Pattern:
+        return Pattern(f"(?:{p}){{{min_n},{max_str}}}{'?' if not greedy else ''}")
+
+    return repeat
 
 
 @re_escape

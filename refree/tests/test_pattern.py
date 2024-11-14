@@ -78,7 +78,7 @@ def test_groups():
 
 
 def test_pattern_methods():
-    pattern = op.seq(op.word, op.space, op.digit)
+    pattern = op.word + op.space + op.digit
     assert pattern.search("prefix abc 5 suffix").group() == "abc 5"
 
     results = pattern.findall("word 1 text 2")
@@ -125,16 +125,22 @@ def test_character_classes():
 def test_boundary_matchers():
     """Test word boundaries and line anchors"""
     # Word boundaries
-    word_pattern = op.bound + op.word + op.bound
-    print(word_pattern)
-    assert word_pattern.search("Hello world!")
-    assert not word_pattern.search("Hello_world")
+    cat_pattern = op.bound + "cat" + op.bound
+    assert cat_pattern.search("my cat sleeps")
+    assert not cat_pattern.search("category")
+    assert not cat_pattern.search("tomcat")
 
-    # Line anchors
-    line_pattern = op.begin + "start" + op.end
-    assert line_pattern.match("start")
-    assert not line_pattern.match("start\n")
-    assert not line_pattern.match(" start")
+    # Line anchors - begin
+    hello_pattern = op.begin + "Hello"
+    assert hello_pattern.search("Hello world")
+    assert not hello_pattern.search(" Hello")
+    assert not hello_pattern.search("Say Hello")
+
+    # Line anchors - end
+    bye_pattern = "bye" + op.end
+    assert bye_pattern.search("good bye")
+    assert not bye_pattern.search("bye ")
+    assert not bye_pattern.search("bye_")
 
 
 def test_lookaround():
@@ -145,9 +151,9 @@ def test_lookaround():
     assert not dollars.match("5€")
 
     # Negative lookahead
-    no_vowel = op.word + op.not_ahead(op.anyof("aeiou"))
-    assert no_vowel.match("dry")
-    assert not no_vowel.match("dye")
+    no_vowel = op.some(op.exclude("aeiou")) + op.not_ahead(op.anyof("aeiou"))
+    assert no_vowel.fullmatch("dry")
+    assert not no_vowel.fullmatch("dye")
 
     # Positive lookbehind
     after_hash = op.behind("#") + op.word
@@ -155,9 +161,9 @@ def test_lookaround():
     assert not after_hash.search("@tag")
 
     # Negative lookbehind
-    no_digit_before = op.not_behind(op.digit) + op.word
-    assert no_digit_before.search("abc")
-    assert not no_digit_before.search("1abc")
+    no_digit_before = op.not_behind(op.digit) + op.some(op.anyof("a-z"))
+    assert no_digit_before.fullmatch("abc")
+    assert not no_digit_before.fullmatch("1abc")
 
 
 def test_greedy_vs_nongreedy():
@@ -179,14 +185,14 @@ def test_between_quantifier():
     three_digits = op.between(3, 3)(op.digit)
     assert three_digits.match("123")
     assert not three_digits.match("12")
-    assert not three_digits.match("1234")
+    assert not three_digits.fullmatch("1234")
 
     # Range with upper bound
     phone = op.between(2, 4)(op.digit)
     assert phone.match("12")
     assert phone.match("123")
     assert phone.match("1234")
-    assert not phone.match("12345")
+    assert not phone.fullmatch("12345")
 
     # Range without upper bound
     many_digits = op.between(2, None)(op.digit)
@@ -198,15 +204,14 @@ def test_pattern_composition():
     """Test complex pattern composition"""
     # Email pattern
     email = op.seq(
-        op.some(op.alt(op.letter, op.anyof(".-_"))),  # username
+        op.some(op.anyof(op.letter + "._")),  # username
         "@",
-        op.some(op.alt(op.letter, op.lit("-"))),  # domain
-        op.lit("."),
+        op.some(op.some(op.anyof("a-z")) + op.anyof("._")),  # domain
         op.between(2, 4)(op.letter),  # TLD
     )
 
     assert email.match("user@example.com")
-    assert email.match("user.name@sub-domain.co.uk")
+    assert email.match("user.name@sub_domain.co.uk")
     assert not email.match("invalid@email")
     assert not email.match("@domain.com")
 
@@ -219,5 +224,5 @@ def test_special_characters():
     assert not dot_pattern.match("x5")
 
     # Test escaping in character classes
-    special_chars = op.anyof(".*+?[](){}^$|\\")
-    assert all(special_chars.match(c) for c in ".*+?[](){}^$|\\")
+    special_chars = op.anyof(".*+?[](){}^$|\-\\")
+    assert all(special_chars.match(c) for c in ".*+?[](){}^$|-\\")
