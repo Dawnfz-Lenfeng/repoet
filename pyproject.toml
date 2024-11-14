@@ -1,3 +1,7 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = [
+    "setuptools<64; python_version<'3.12'",
+    "setuptools; python_version>='3.12'",
+    "wheel",
+]
 build-backend = "setuptools.build_meta"
