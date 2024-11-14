@@ -224,5 +224,5 @@ def test_special_characters():
     assert not dot_pattern.match("x5")
 
     # Test escaping in character classes
-    special_chars = op.anyof(".*+?[](){}^$|\-\\")
+    special_chars = op.anyof(r".*+?[](){}^$|\-\\")
     assert all(special_chars.match(c) for c in ".*+?[](){}^$|-\\")
