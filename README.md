@@ -10,10 +10,10 @@
 ```python
 from repoet import op
 
-# Traditional regex (cryptic spell)
+# Traditional regex (hard to maintain)
 date_regex = r"^(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})$"
 
-# With RePoet (elegant verse)
+# With RePoet (self-documenting and maintainable)
 date = op.seq(
     op.begin,
     op.group(op.digit * 4, name="year") + "-",
@@ -129,6 +129,28 @@ date = (op.digit * 4) + "-" + \
        (op.digit * 2) + "-" + \
        (op.digit * 2)
 ```
+
+## 🧪 Experimental Features
+
+### Pattern Indexing
+```python
+from repoet import op
+
+# Using indexing for quantifiers
+pattern[n]     # Exactly n times {n}
+pattern[n:]    # n or more times {n,}
+pattern[:n]    # Up to n times {,n}
+pattern[m:n]   # Between m and n times {m,n}
+pattern[:]     # Zero or more times (*)
+pattern[1:]    # One or more times (+)
+pattern[0:1]   # Zero or one time (?)
+
+# Example
+username = op.letter[1:] + op.anyof("._-")[0:1] + op.letter[:]  
+# Shorter than: op.some(op.letter) + op.maybe(op.anyof("._-")) + op.mightsome(op.letter)
+```
+
+Note: Pattern indexing is an experimental feature and its behavior might change in future releases.
 
 ## 🤝 Contributing
 

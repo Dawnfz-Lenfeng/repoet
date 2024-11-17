@@ -226,3 +226,75 @@ def test_special_characters():
     # Test escaping in character classes
     special_chars = op.anyof(r".*+?[](){}^$|\-\\")
     assert all(special_chars.match(c) for c in ".*+?[](){}^$|-\\")
+
+
+def test_index_quantifiers():
+    """Test the new index-based quantifiers"""
+    # Test exact repetition [n]
+    phone = op.digit[3] + "-" + op.digit[4]
+    assert phone.match("123-4567")
+    assert not phone.match("12-4567")
+    assert not phone.match("1234-4567")
+
+    # Test zero or more [:] (*)
+    comment = "/*" + op.any[:] + "*/"
+    assert comment.match("/**/")
+    assert comment.match("/* test comment */")
+    assert not comment.match("/*")
+
+    # Test one or more [1:] (+)
+    number = op.seq(op.maybe("-"), op.digit[1:], op.maybe("." + op.digit[1:]))
+    assert number.match("123")
+    assert number.match("-42.5")
+    assert not number.match(".")
+
+    # Test zero or one [0:1] (?)
+    hex_color = op.seq("#", op.lit("0x")[0:1], op.anyof("0-9A-Fa-f")[6])
+    assert hex_color.match("#0xFFAABB")
+    assert hex_color.match("#FF00CC")
+    assert not hex_color.match("#12")
+
+    # Test range with upper bound [:n]
+    username = op.letter[:16]
+    assert username.match("user")
+    assert username.match("a" * 16)
+    assert not username.fullmatch("a" * 17)
+
+    # Test range with lower bound [n:]
+    password = op.anyof("a-zA-Z0-9")[8:]
+    assert not password.match("short")
+    assert password.match("password123")
+    assert password.match("verylongpassword")
+
+    # Test specific range [m:n]
+    pin = op.digit[4:6]
+    assert pin.match("1234")
+    assert pin.match("123456")
+    assert not pin.match("123")
+    assert not pin.fullmatch("1234567")
+
+    # Test complex combinations
+    email = op.seq(
+        op.letter[1:],
+        op.anyof("._-")[0:1],
+        op.letter[:],
+        "@",
+        op.letter[1:] + "." + op.letter[2:4],
+    )
+    assert email.match("user@example.com")
+    assert email.match("first.last@domain.co")
+    assert not email.match("@domain.com")
+    assert not email.match("user@.com")
+
+    # Test with groups
+    date = op.seq(
+        op.group(op.digit[4], "year"),
+        "-",
+        op.group(op.digit[2], "month"),
+        "-",
+        op.group(op.digit[2], "day"),
+    )
+    match = date.match("2024-03-21")
+    assert match.group("year") == "2024"
+    assert match.group("month") == "03"
+    assert match.group("day") == "21"

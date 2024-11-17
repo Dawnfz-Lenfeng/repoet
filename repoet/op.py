@@ -216,13 +216,3 @@ def not_behind(*patterns: Union[Pattern, str]) -> Pattern:
         not_behind("foo")  -> (?<!foo)
     """
     return Pattern(f"(?<!{''.join(map(str, patterns))})")
-
-
-@re_escape
-def atomic_group(*patterns: Union[Pattern, str]) -> Pattern:
-    """Create an atomic group (?>...)
-
-    Examples:
-        atomic_group("foo", word)  -> (?>foo\\w+)
-    """
-    return Pattern(f"(?>{''.join(map(str, patterns))})")
